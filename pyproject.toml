@@ -1,0 +1,24 @@
+[project]
+name = "streamlit-las-visualizer"
+version = "0.1.0"
+description = "Application Streamlit pour lire des fichiers LAS, visualiser les logs, et créer des crossplots."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Teddy" }]
+keywords = ["streamlit", "las", "well logs", "geoscience", "crossplot"]
+
+# Dépendances runtime gérées par uv
+dependencies = [
+  "streamlit>=1.39",
+  "lasio>=0.31",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "plotly>=5.20"
+]
+
+[tool.black]
+line-length = 100
+
+# Configure uv to treat this as an application, not a package to build
+[tool.uv]
+package = false
