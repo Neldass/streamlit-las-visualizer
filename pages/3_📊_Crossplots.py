@@ -51,6 +51,23 @@ with st.sidebar:
 
     use_density = st.checkbox("Mode densité (heatmap)", value=False, help="Utile pour de très gros nuages de points")
 
+    st.divider()
+    st.subheader("Normalisation des points")
+    norm_method = st.selectbox(
+        "Méthode",
+        options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"],
+        index=0,
+        help="Normalise X et Y pour améliorer la lisibilité. Ne modifie pas les données sources.")
+    norm_scope = st.radio(
+        "Échelle",
+        options=["Globale (tous puits)", "Par puits"],
+        index=0,
+        help="Normaliser sur l'ensemble des puits sélectionnés ou séparément pour chaque puits.")
+    normalize_color = st.checkbox(
+        "Normaliser aussi la couleur si numérique",
+        value=False,
+        help="Si la couleur est un log numérique, applique la même normalisation.")
+
     # Global depth range across selected wells
     depth_min = float(min(d["df"]["DEPTH"].min() for d in datasets.values()))
     depth_max = float(max(d["df"]["DEPTH"].max() for d in datasets.values()))
@@ -74,7 +91,70 @@ for n, d in datasets.items():
 
 combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=[x, y])
 
+def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str, by: str | None):
+    if method == "(aucune)":
+        return
+    for col in cols:
+        if col not in df.columns:
+            continue
+        # Assure des floats pour les calculs
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if by is None:
+            s = df[col]
+            if method == "Min-Max [0,1]":
+                vmin, vmax = s.min(skipna=True), s.max(skipna=True)
+                denom = (vmax - vmin)
+                if pd.isna(denom) or denom == 0:
+                    df[col] = 0.0
+                else:
+                    df[col] = (s - vmin) / denom
+            elif method == "Z-score (moy=0, std=1)":
+                mean, std = s.mean(skipna=True), s.std(skipna=True)
+                df[col] = 0.0 if (pd.isna(std) or std == 0) else (s - mean) / std
+            elif method == "Robuste (IQR)":
+                q1, q3 = s.quantile(0.25), s.quantile(0.75)
+                iqr = q3 - q1
+                df[col] = 0.0 if (pd.isna(iqr) or iqr == 0) else (s - (q1 + q3) / 2) / iqr
+        else:
+            # Calculs par puits via transform pour rester vectorisé
+            gb = df.groupby(by)[col]
+            if method == "Min-Max [0,1]":
+                vmin = gb.transform("min")
+                vmax = gb.transform("max")
+                denom = (vmax - vmin)
+                denom_safe = denom.mask(denom == 0, other=np.nan)
+                df[col] = ((df[col] - vmin) / denom_safe).fillna(0.0)
+            elif method == "Z-score (moy=0, std=1)":
+                mean = gb.transform("mean")
+                std = gb.transform("std")
+                std_safe = std.mask((std == 0) | (std.isna()), other=np.nan)
+                df[col] = ((df[col] - mean) / std_safe).fillna(0.0)
+            elif method == "Robuste (IQR)":
+                q1 = gb.transform(lambda s: s.quantile(0.25))
+                q3 = gb.transform(lambda s: s.quantile(0.75))
+                iqr = (q3 - q1)
+                iqr_safe = iqr.mask((iqr == 0) | (iqr.isna()), other=np.nan)
+                df[col] = ((df[col] - (q1 + q3) / 2) / iqr_safe).fillna(0.0)
+
+# Appliquer normalisation si demandé
+norm_by = "WELL" if norm_scope == "Par puits" else None
+cols_to_norm = [str(x), str(y)]
+_normalize_inplace(combined, cols_to_norm, norm_method, by=norm_by)
+
+# Option: normaliser la couleur si numérique et demandée
+if normalize_color and color and color != "WELL" and color in combined.columns:
+    if pd.api.types.is_numeric_dtype(combined[color]):
+        _normalize_inplace(combined, [color], norm_method, by=norm_by)
+
 title_suffix_raw = [datasets_all[n].get("display_name", n) for n in selected_names]
 title_suffix = ", ".join(title_suffix_raw) if len(title_suffix_raw) <= 3 else f"{len(title_suffix_raw)} puits"
-fig = plot_crossplot(combined, x=str(x), y=str(y), color=color, use_density=use_density, title=f"{y} vs {x} - {title_suffix}")
+norm_suffix = "" if norm_method == "(aucune)" else (" • norm=" + ("Par puits" if norm_by else "Globale") + f"/{norm_method}")
+fig = plot_crossplot(
+    combined,
+    x=str(x),
+    y=str(y),
+    color=color,
+    use_density=use_density,
+    title=f"{y} vs {x} - {title_suffix}{norm_suffix}",
+)
 st.plotly_chart(fig, config={"displaylogo": False, "responsive": True})
