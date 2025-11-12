@@ -57,12 +57,7 @@ with st.sidebar:
         "Méthode",
         options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"],
         index=0,
-        help="Normalise X et Y pour améliorer la lisibilité. Ne modifie pas les données sources.")
-    norm_scope = st.radio(
-        "Échelle",
-        options=["Globale (tous puits)", "Par puits"],
-        index=0,
-        help="Normaliser sur l'ensemble des puits sélectionnés ou séparément pour chaque puits.")
+        help="Normalise X et Y globalement (tous puits). Ne modifie pas les données sources.")
     normalize_color = st.checkbox(
         "Normaliser aussi la couleur si numérique",
         value=False,
@@ -136,8 +131,8 @@ def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str, by: str |
                 iqr_safe = iqr.mask((iqr == 0) | (iqr.isna()), other=np.nan)
                 df[col] = ((df[col] - (q1 + q3) / 2) / iqr_safe).fillna(0.0)
 
-# Appliquer normalisation si demandé
-norm_by = "WELL" if norm_scope == "Par puits" else None
+# Appliquer normalisation si demandé (global uniquement)
+norm_by = None
 cols_to_norm = [str(x), str(y)]
 _normalize_inplace(combined, cols_to_norm, norm_method, by=norm_by)
 
@@ -148,7 +143,7 @@ if normalize_color and color and color != "WELL" and color in combined.columns:
 
 title_suffix_raw = [datasets_all[n].get("display_name", n) for n in selected_names]
 title_suffix = ", ".join(title_suffix_raw) if len(title_suffix_raw) <= 3 else f"{len(title_suffix_raw)} puits"
-norm_suffix = "" if norm_method == "(aucune)" else (" • norm=" + ("Par puits" if norm_by else "Globale") + f"/{norm_method}")
+norm_suffix = "" if norm_method == "(aucune)" else (" • norm=Globale/" + norm_method)
 fig = plot_crossplot(
     combined,
     x=str(x),
