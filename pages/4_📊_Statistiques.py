@@ -6,18 +6,9 @@ import plotly.express as px
 from src.las_utils import list_numeric_logs, subset_depth
 
 
-def _get_palette_sequence(name: str) -> list[str]:
-    seq = getattr(px.colors.qualitative, name, None)
-    if not seq:
-        seq = px.colors.qualitative.Plotly
-    return list(seq)
-
-
-def _build_color_map(selected: list[str], palette_name: str, custom_enabled: bool) -> dict[str, str]:
-    seq = _get_palette_sequence(palette_name)
-    color_map: dict[str, str] = {}
-    for i, w in enumerate(selected):
-        color_map[w] = seq[i % len(seq)]
+def build_color_map(selected: list[str], custom_enabled: bool) -> dict[str, str]:
+    base_cycle = px.colors.qualitative.Plotly
+    color_map: dict[str, str] = {w: base_cycle[i % len(base_cycle)] for i, w in enumerate(selected)}
     if custom_enabled:
         st.sidebar.markdown("— Couleurs par puits —")
         if "stats_colors" not in st.session_state:
@@ -35,7 +26,6 @@ st.set_page_config(page_title="Statistiques", page_icon="📊", layout="wide")
 
 st.title("📊 Statistiques")
 
-# Guard: datasets must be loaded first
 if "datasets" not in st.session_state or not st.session_state["datasets"]:
     st.warning("Veuillez d'abord importer des fichiers LAS dans la page d'import.")
     st.stop()
@@ -59,7 +49,6 @@ if not selected_wells:
 
 datasets = {n: datasets_all[n] for n in selected_wells}
 
-# Compute intersection of numeric logs across selected wells
 per_well_numeric = {n: set(list_numeric_logs(d["df"], exclude=["DEPTH"])) for n, d in datasets.items()}
 common_numeric = sorted(set.intersection(*per_well_numeric.values())) if per_well_numeric else []
 if not common_numeric:
@@ -68,7 +57,6 @@ if not common_numeric:
 
 with st.sidebar:
     st.header("Paramètres globaux")
-    # Depth range across selected wells
     depth_min = float(min(d["df"]["DEPTH"].min() for d in datasets.values()))
     depth_max = float(max(d["df"]["DEPTH"].max() for d in datasets.values()))
     m, M = st.slider(
@@ -85,18 +73,14 @@ with st.sidebar:
         "Méthode",
         options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"],
         index=0,
-        help="Normalise les logs globalement (tous puits). Ne modifie pas les données sources.",
+        help="Normalise globalement sans modifier les données sources.",
     )
 
     st.subheader("Couleurs")
-    use_custom_colors = st.checkbox(
-        "Couleurs personnalisées par puits",
-        value=False,
-        help="Permet de choisir une couleur spécifique pour chaque puits.",
-    )
+    use_custom_colors = st.checkbox("Couleurs personnalisées par puits", value=False)
 
     # Build color map ONCE to avoid duplicate widget keys
-    color_map = _build_color_map(selected_wells, "Plotly", use_custom_colors)
+    color_map = build_color_map(selected_wells, use_custom_colors)
 
 
 def build_combined_df(cols: list[str]) -> pd.DataFrame:
@@ -112,7 +96,6 @@ def build_combined_df(cols: list[str]) -> pd.DataFrame:
         frames.append(chunk)
     if frames:
         out = pd.concat(frames, ignore_index=True)
-        # Clean numeric
         for c in cols:
             if c in out.columns:
                 out[c] = pd.to_numeric(out[c], errors="coerce")
@@ -142,7 +125,6 @@ def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str) -> None:
 
 tabs = st.tabs(["Histogrammes", "Boxplots", "Pairplot", "Corrélation"])
 
-# -------------------- Histogrammes --------------------
 with tabs[0]:
     st.subheader("Histogrammes")
     sel_logs_hist = st.multiselect(
@@ -180,7 +162,6 @@ with tabs[0]:
                 fig.update_layout(barmode=barmode, height=650, title=f"Histogramme • {v}{suffix}")
                 st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
             else:
-                # Melt into long format for small multiples by variable
                 long = data.melt(id_vars=["WELL"], value_vars=sel_logs_hist, var_name="log", value_name="value")
                 fig = px.histogram(
                     long.dropna(subset=["value"]),
@@ -199,7 +180,6 @@ with tabs[0]:
                 st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 
-# -------------------- Boxplots --------------------
 with tabs[1]:
     st.subheader("Boxplots")
     sel_logs_box = st.multiselect(
@@ -228,15 +208,13 @@ with tabs[1]:
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 
-# -------------------- Pairplot --------------------
 with tabs[2]:
     st.subheader("Pairplot (scatter matrix)")
-    help_pp = "Évitez de sélectionner trop de logs (<= 6 recommandé)."
     sel_logs_pair = st.multiselect(
         "Sélectionner les logs (2-6)",
         options=common_numeric,
         default=common_numeric[: min(4, len(common_numeric))],
-        help=help_pp,
+        help="<= 6 recommandé.",
         key="stats_pair_logs",
     )
     if len(sel_logs_pair) >= 2:
@@ -255,7 +233,6 @@ with tabs[2]:
                 color_discrete_map=color_map,
                 opacity=0.6,
             )
-            # Set a reasonable size depending on number of dims
             n = len(sel_logs_pair)
             size = 180 + n * 120
             suffix = "" if norm_method == "(aucune)" else (" • norm=Globale/" + norm_method)
@@ -265,7 +242,6 @@ with tabs[2]:
         st.info("Sélectionnez au moins deux logs.")
 
 
-# -------------------- Corrélation --------------------
 with tabs[3]:
     st.subheader("Matrice de corrélation (Pearson)")
     sel_logs_corr = st.multiselect(
@@ -275,7 +251,6 @@ with tabs[3]:
         key="stats_corr_logs",
     )
     if len(sel_logs_corr) >= 2:
-        # Corr matrix doesn't use color per well, so we skip the map here
         data = build_combined_df(sel_logs_corr)
         _normalize_inplace(data, sel_logs_corr, norm_method)
         if data.empty:

@@ -2,9 +2,7 @@ import streamlit as st
 import numpy as np
 
 from src.las_utils import list_numeric_logs, subset_depth
-from src.plot_utils import (
-    plot_logs_custom_tracks,
-)
+from src.plot_utils import plot_logs_custom_tracks
 
 st.set_page_config(page_title="Visualiser les logs", page_icon="📈", layout="wide")
 
@@ -26,7 +24,6 @@ name = st.selectbox(
 selected = st.session_state["datasets"][name]
 df = selected["df"].copy()
 
-# Determine units map from curves info
 units = {c.name: (c.unit or None) for c in selected["curves"]}
 
 numeric_logs = list_numeric_logs(df, exclude=["DEPTH"])
@@ -45,17 +42,13 @@ with st.sidebar:
     st.subheader("Mise en page")
     track_width = st.slider("Largeur par track (px)", min_value=120, max_value=420, value=270, step=10)
     fig_height = st.slider("Hauteur du graphique (px)", min_value=400, max_value=1200, value=750, step=50)
-    trim_depth = st.checkbox(
-        "Raccourcir la profondeur aux valeurs présentes", value=True,
-        help="Commencer/terminer chaque track là où il y a des valeurs (ignorer les zones entièrement vides)."
-    )
+    trim_depth = st.checkbox("Raccourcir la profondeur aux valeurs présentes", value=True)
 
-# Filter by depth
 view = subset_depth(df, m, M)
 
 display_name = selected.get("display_name", name)
 
-st.subheader("Configurer manuellement les tracks")
+st.subheader("Configurer les tracks")
 n_tracks = st.number_input("Nombre de tracks", min_value=1, max_value=8, value=min(1, len(numeric_logs)))
 track_groups = []
 for i in range(int(n_tracks)):
@@ -63,10 +56,8 @@ for i in range(int(n_tracks)):
     sel = st.multiselect(f"Logs du track {i+1}", options=numeric_logs, default=default_i, key=f"track_{i}")
     track_groups.append(sel)
 
-# Vérifier qu'au moins un log est sélectionné sur l'ensemble des tracks
 chosen = sorted({c for grp in track_groups for c in grp})
 
-# Couleurs personnalisées (expander) si au moins un log choisi
 color_map = {}
 if chosen:
     with st.expander("Couleurs personnalisées"):
@@ -75,26 +66,23 @@ if chosen:
             st.session_state["logs_colors"] = {}
         for log in chosen:
             default_color = st.session_state["logs_colors"].get(log, None)
-            # Default palette fallback cycle
             if default_color is None:
-                palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
-                idx = chosen.index(log) % len(palette)
-                default_color = palette[idx]
+                colors_cycle = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+                idx = chosen.index(log) % len(colors_cycle)
+                default_color = colors_cycle[idx]
             picked = st.color_picker(f"{log}", default_color, key=f"color_{log}")
             st.session_state["logs_colors"][log] = picked
             color_map[log] = picked
 
-# Echelles X par track (manuelles) 
 x_ranges: list | None = None
 if any(track_groups):
     with st.expander("Échelle X par track (optionnel)"):
-        st.caption("Définissez des min/max d'axe X par track. Laissez vide pour 'Auto'.")
+        st.caption("Min/max X par track (vide = auto)")
         x_ranges = []
         for i, logs in enumerate(track_groups, start=1):
             if not logs:
                 x_ranges.append(None)
                 continue
-            # Calcule des bornes suggérées sur la vue filtrée (sans dépendre de pandas ici)
             vals = []
             for l in logs:
                 if l in view.columns:
@@ -132,14 +120,13 @@ else:
         track_groups,
         depth_col="DEPTH",
         units=units,
-        title=f"Tracks - {display_name}",
+        title=f"Tracks — {display_name}",
         color_map=color_map if color_map else None,
         x_ranges=x_ranges,
         track_width=int(track_width),
         height=int(fig_height),
         trim_depth_gaps=trim_depth,
     )
-    # If only one non-empty track, disable container width so custom width applies
     non_empty_tracks = [tg for tg in track_groups if tg]
     single = len(non_empty_tracks) == 1
     st.plotly_chart(

@@ -7,17 +7,9 @@ from src.las_utils import list_numeric_logs, subset_depth
 from src.plot_utils import plot_crossplot
 
 
-def _get_palette_sequence(name: str) -> list[str]:
-    seq = getattr(px.colors.qualitative, name, None)
-    if not seq:
-        seq = px.colors.qualitative.Plotly
-    return list(seq)
-
-
-def _build_well_color_map(wells: list[str], custom_enabled: bool) -> dict[str, str]:
-    # Default to Plotly qualitative palette
-    seq = _get_palette_sequence("Plotly")
-    color_map: dict[str, str] = {w: seq[i % len(seq)] for i, w in enumerate(wells)}
+def build_well_color_map(wells: list[str], custom_enabled: bool) -> dict[str, str]:
+    base_cycle = px.colors.qualitative.Plotly
+    color_map: dict[str, str] = {w: base_cycle[i % len(base_cycle)] for i, w in enumerate(wells)}
     if custom_enabled:
         st.sidebar.markdown("— Couleurs par puits —")
         if "cross_colors" not in st.session_state:
@@ -40,7 +32,6 @@ if "datasets" not in st.session_state or not st.session_state["datasets"]:
 
 datasets_all = st.session_state["datasets"]
 names = list(datasets_all.keys())
-# Select-all control + multiselect
 select_all = st.checkbox("Sélectionner tous les puits", value=False)
 selected_names = st.multiselect(
     "Choisir un ou plusieurs puits",
@@ -55,7 +46,6 @@ if not selected_names:
 
 datasets = {n: datasets_all[n] for n in selected_names}
 
-# Compute the intersection of numeric logs present in ALL selected wells
 per_well_numeric = {n: set(list_numeric_logs(d["df"], exclude=["DEPTH"])) for n, d in datasets.items()}
 common_numeric = set.intersection(*per_well_numeric.values()) if per_well_numeric else set()
 numeric_logs = sorted(common_numeric)
@@ -71,31 +61,23 @@ with st.sidebar:
     with c2:
         y = st.selectbox("Y", options=numeric_logs, index=1 if len(numeric_logs) > 1 else 0)
 
-    color_choice = st.selectbox(
-        "Couleur (optionnel)", options=["(aucune)", "(puits)"] + numeric_logs, index=0,
-        help="Colorer par puits ou par un log commun."
-    )
+    color_choice = st.selectbox("Couleur (optionnel)", options=["(aucune)", "(puits)"] + numeric_logs, index=0)
     color = None if color_choice == "(aucune)" else ("WELL" if color_choice == "(puits)" else color_choice)
 
-    use_density = st.checkbox("Mode densité (heatmap)", value=False, help="Utile pour de très gros nuages de points")
+    use_density = st.checkbox("Mode densité (heatmap)", value=False)
 
     st.divider()
     st.subheader("Normalisation des points")
-    norm_method = st.selectbox(
-        "Méthode",
-        options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"],
-        index=0,
-        help="Normalise X et Y globalement (tous puits). Ne modifie pas les données sources.")
+    norm_method = st.selectbox("Méthode", options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"], index=0)
 
     # Couleurs personnalisées (seulement quand on colorie par puits)
     color_map = None
     if color == "WELL":
         st.subheader("Couleurs")
-        st.caption("Palette par défaut Plotly. Activez pour définir par puits.")
+        st.caption("Couleurs par défaut (Plotly). Activez pour personnaliser.")
         use_custom_colors = st.checkbox("Couleurs personnalisées par puits", value=False)
-        color_map = _build_well_color_map(selected_names, use_custom_colors)
+        color_map = build_well_color_map(selected_names, use_custom_colors)
 
-    # Global depth range across selected wells
     depth_min = float(min(d["df"]["DEPTH"].min() for d in datasets.values()))
     depth_max = float(max(d["df"]["DEPTH"].max() for d in datasets.values()))
     m, M = st.slider(
@@ -106,7 +88,6 @@ with st.sidebar:
         step=0.1,
     )
 
-# Build concatenated view with WELL column
 frames = []
 needed_cols = {x, y} | ({color} if color and color != "WELL" else set())
 for n, d in datasets.items():
@@ -124,7 +105,6 @@ def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str, by: str |
     for col in cols:
         if col not in df.columns:
             continue
-        # Assure des floats pour les calculs
         df[col] = pd.to_numeric(df[col], errors="coerce")
         if by is None:
             s = df[col]
@@ -143,7 +123,6 @@ def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str, by: str |
                 iqr = q3 - q1
                 df[col] = 0.0 if (pd.isna(iqr) or iqr == 0) else (s - (q1 + q3) / 2) / iqr
         else:
-            # Calculs par puits via transform pour rester vectorisé
             gb = df.groupby(by)[col]
             if method == "Min-Max [0,1]":
                 vmin = gb.transform("min")
@@ -163,7 +142,6 @@ def _normalize_inplace(df: pd.DataFrame, cols: list[str], method: str, by: str |
                 iqr_safe = iqr.mask((iqr == 0) | (iqr.isna()), other=np.nan)
                 df[col] = ((df[col] - (q1 + q3) / 2) / iqr_safe).fillna(0.0)
 
-# Appliquer normalisation si demandé (global uniquement)
 norm_by = None
 cols_to_norm = [str(x), str(y)]
 _normalize_inplace(combined, cols_to_norm, norm_method, by=norm_by)

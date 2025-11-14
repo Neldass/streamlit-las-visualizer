@@ -36,10 +36,8 @@ if st.session_state["datasets"]:
     st.subheader("Jeux de données disponibles")
     for name, ds in st.session_state["datasets"].items():
         df = ds["df"]
-        # Assure DEPTH is numeric and compute safe min/max
         depth_series = pd.to_numeric(df["DEPTH"], errors="coerce")
         depth_min, depth_max = depth_series.min(skipna=True), depth_series.max(skipna=True)
-        # Convert to floats for metric formatting, handle NaN gracefully
         depth_min_f = float(depth_min) if pd.notna(depth_min) else None
         depth_max_f = float(depth_max) if pd.notna(depth_max) else None
         display = ds.get("display_name", name)
