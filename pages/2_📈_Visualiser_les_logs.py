@@ -42,6 +42,13 @@ with st.sidebar:
         value=(float(depth_min), float(depth_max)),
         step=0.1,
     )
+    st.subheader("Mise en page")
+    track_width = st.slider("Largeur par track (px)", min_value=120, max_value=420, value=270, step=10)
+    fig_height = st.slider("Hauteur du graphique (px)", min_value=400, max_value=1200, value=750, step=50)
+    trim_depth = st.checkbox(
+        "Raccourcir la profondeur aux valeurs présentes", value=True,
+        help="Commencer/terminer chaque track là où il y a des valeurs (ignorer les zones entièrement vides)."
+    )
 
 # Filter by depth
 view = subset_depth(df, m, M)
@@ -49,7 +56,7 @@ view = subset_depth(df, m, M)
 display_name = selected.get("display_name", name)
 
 st.subheader("Configurer manuellement les tracks")
-n_tracks = st.number_input("Nombre de tracks", min_value=1, max_value=8, value=min(3, len(numeric_logs)))
+n_tracks = st.number_input("Nombre de tracks", min_value=1, max_value=8, value=min(1, len(numeric_logs)))
 track_groups = []
 for i in range(int(n_tracks)):
     default_i = [numeric_logs[i]] if i < len(numeric_logs) else []
@@ -58,8 +65,85 @@ for i in range(int(n_tracks)):
 
 # Vérifier qu'au moins un log est sélectionné sur l'ensemble des tracks
 chosen = sorted({c for grp in track_groups for c in grp})
+
+# Couleurs personnalisées (expander) si au moins un log choisi
+color_map = {}
+if chosen:
+    with st.expander("Couleurs personnalisées"):
+        st.caption("Définissez une couleur par log (facultatif).")
+        if "logs_colors" not in st.session_state:
+            st.session_state["logs_colors"] = {}
+        for log in chosen:
+            default_color = st.session_state["logs_colors"].get(log, None)
+            # Default palette fallback cycle
+            if default_color is None:
+                palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+                idx = chosen.index(log) % len(palette)
+                default_color = palette[idx]
+            picked = st.color_picker(f"{log}", default_color, key=f"color_{log}")
+            st.session_state["logs_colors"][log] = picked
+            color_map[log] = picked
+
+# Echelles X par track (manuelles) 
+x_ranges: list | None = None
+if any(track_groups):
+    with st.expander("Échelle X par track (optionnel)"):
+        st.caption("Définissez des min/max d'axe X par track. Laissez vide pour 'Auto'.")
+        x_ranges = []
+        for i, logs in enumerate(track_groups, start=1):
+            if not logs:
+                x_ranges.append(None)
+                continue
+            # Calcule des bornes suggérées sur la vue filtrée (sans dépendre de pandas ici)
+            vals = []
+            for l in logs:
+                if l in view.columns:
+                    arr = np.asarray(view[l].to_numpy(dtype=float))
+                    if arr.size:
+                        vals.append(arr)
+            if vals:
+                joined = np.concatenate(vals)
+                finite = joined[np.isfinite(joined)]
+                if finite.size:
+                    sugg_min = float(np.min(finite))
+                    sugg_max = float(np.max(finite))
+                else:
+                    sugg_min = sugg_max = None
+            else:
+                sugg_min = sugg_max = None
+            c1, c2, c3 = st.columns([1,1,1])
+            with c1:
+                xmin = st.text_input(f"Track {i} • X min", value=(f"{sugg_min:.3f}" if sugg_min is not None else ""), key=f"xmin_{i}")
+            with c2:
+                xmax = st.text_input(f"Track {i} • X max", value=(f"{sugg_max:.3f}" if sugg_max is not None else ""), key=f"xmax_{i}")
+            with c3:
+                st.write("\u00A0")
+                st.write("Auto si vide")
+            try:
+                xr = (float(xmin), float(xmax)) if xmin.strip() != "" and xmax.strip() != "" else None
+            except Exception:
+                xr = None
+            x_ranges.append(xr)
 if not chosen:
     st.info("Sélectionnez au moins un log dans les tracks ci-dessus.")
 else:
-    fig_custom = plot_logs_custom_tracks(view, track_groups, depth_col="DEPTH", units=units, title=f"Tracks - {display_name}")
-    st.plotly_chart(fig_custom, config={"displaylogo": False, "responsive": True})
+    fig_custom = plot_logs_custom_tracks(
+        view,
+        track_groups,
+        depth_col="DEPTH",
+        units=units,
+        title=f"Tracks - {display_name}",
+        color_map=color_map if color_map else None,
+        x_ranges=x_ranges,
+        track_width=int(track_width),
+        height=int(fig_height),
+        trim_depth_gaps=trim_depth,
+    )
+    # If only one non-empty track, disable container width so custom width applies
+    non_empty_tracks = [tg for tg in track_groups if tg]
+    single = len(non_empty_tracks) == 1
+    st.plotly_chart(
+        fig_custom,
+        use_container_width=not single,
+        config={"displaylogo": False}
+    )

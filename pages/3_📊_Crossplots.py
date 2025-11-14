@@ -1,9 +1,34 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+import plotly.express as px
 
 from src.las_utils import list_numeric_logs, subset_depth
 from src.plot_utils import plot_crossplot
+
+
+def _get_palette_sequence(name: str) -> list[str]:
+    seq = getattr(px.colors.qualitative, name, None)
+    if not seq:
+        seq = px.colors.qualitative.Plotly
+    return list(seq)
+
+
+def _build_well_color_map(wells: list[str], custom_enabled: bool) -> dict[str, str]:
+    # Default to Plotly qualitative palette
+    seq = _get_palette_sequence("Plotly")
+    color_map: dict[str, str] = {w: seq[i % len(seq)] for i, w in enumerate(wells)}
+    if custom_enabled:
+        st.sidebar.markdown("— Couleurs par puits —")
+        if "cross_colors" not in st.session_state:
+            st.session_state["cross_colors"] = {}
+        for w in wells:
+            label = st.session_state["datasets"].get(w, {}).get("display_name", w) if "datasets" in st.session_state else w
+            default_hex = st.session_state["cross_colors"].get(w, color_map[w])
+            picked = st.sidebar.color_picker(label, default_hex, key=f"cross_color_{w}")
+            st.session_state["cross_colors"][w] = picked
+            color_map[w] = picked
+    return color_map
 
 st.set_page_config(page_title="Crossplots", page_icon="📊", layout="wide")
 
@@ -15,13 +40,16 @@ if "datasets" not in st.session_state or not st.session_state["datasets"]:
 
 datasets_all = st.session_state["datasets"]
 names = list(datasets_all.keys())
-# Allow selecting multiple wells/datasets (display well name if available)
+# Select-all control + multiselect
+select_all = st.checkbox("Sélectionner tous les puits", value=False)
 selected_names = st.multiselect(
     "Choisir un ou plusieurs puits",
     names,
-    default=names[:1],
+    default=names if select_all else names[:1],
     format_func=lambda n: datasets_all[n].get("display_name", n),
 )
+if select_all:
+    selected_names = names
 if not selected_names:
     st.stop()
 
@@ -58,10 +86,14 @@ with st.sidebar:
         options=["(aucune)", "Min-Max [0,1]", "Z-score (moy=0, std=1)", "Robuste (IQR)"],
         index=0,
         help="Normalise X et Y globalement (tous puits). Ne modifie pas les données sources.")
-    normalize_color = st.checkbox(
-        "Normaliser aussi la couleur si numérique",
-        value=False,
-        help="Si la couleur est un log numérique, applique la même normalisation.")
+
+    # Couleurs personnalisées (seulement quand on colorie par puits)
+    color_map = None
+    if color == "WELL":
+        st.subheader("Couleurs")
+        st.caption("Palette par défaut Plotly. Activez pour définir par puits.")
+        use_custom_colors = st.checkbox("Couleurs personnalisées par puits", value=False)
+        color_map = _build_well_color_map(selected_names, use_custom_colors)
 
     # Global depth range across selected wells
     depth_min = float(min(d["df"]["DEPTH"].min() for d in datasets.values()))
@@ -136,10 +168,7 @@ norm_by = None
 cols_to_norm = [str(x), str(y)]
 _normalize_inplace(combined, cols_to_norm, norm_method, by=norm_by)
 
-# Option: normaliser la couleur si numérique et demandée
-if normalize_color and color and color != "WELL" and color in combined.columns:
-    if pd.api.types.is_numeric_dtype(combined[color]):
-        _normalize_inplace(combined, [color], norm_method, by=norm_by)
+# Note: pas de normalisation de couleur; on retire cette option (aligné avec la demande)
 
 title_suffix_raw = [datasets_all[n].get("display_name", n) for n in selected_names]
 title_suffix = ", ".join(title_suffix_raw) if len(title_suffix_raw) <= 3 else f"{len(title_suffix_raw)} puits"
@@ -151,5 +180,6 @@ fig = plot_crossplot(
     color=color,
     use_density=use_density,
     title=f"{y} vs {x} - {title_suffix}{norm_suffix}",
+    color_discrete_map=color_map,
 )
 st.plotly_chart(fig, config={"displaylogo": False, "responsive": True})
