@@ -64,54 +64,12 @@ if chosen:
         st.caption("Définissez une couleur par log (facultatif).")
         if "logs_colors" not in st.session_state:
             st.session_state["logs_colors"] = {}
-        for log in chosen:
-            default_color = st.session_state["logs_colors"].get(log, None)
-            if default_color is None:
-                colors_cycle = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
-                idx = chosen.index(log) % len(colors_cycle)
-                default_color = colors_cycle[idx]
+        colors_cycle = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        for idx, log in enumerate(chosen):
+            default_color = st.session_state["logs_colors"].get(log, colors_cycle[idx % len(colors_cycle)])
             picked = st.color_picker(f"{log}", default_color, key=f"color_{log}")
             st.session_state["logs_colors"][log] = picked
             color_map[log] = picked
-
-x_ranges: list | None = None
-if any(track_groups):
-    with st.expander("Échelle X par track (optionnel)"):
-        st.caption("Min/max X par track (vide = auto)")
-        x_ranges = []
-        for i, logs in enumerate(track_groups, start=1):
-            if not logs:
-                x_ranges.append(None)
-                continue
-            vals = []
-            for l in logs:
-                if l in view.columns:
-                    arr = np.asarray(view[l].to_numpy(dtype=float))
-                    if arr.size:
-                        vals.append(arr)
-            if vals:
-                joined = np.concatenate(vals)
-                finite = joined[np.isfinite(joined)]
-                if finite.size:
-                    sugg_min = float(np.min(finite))
-                    sugg_max = float(np.max(finite))
-                else:
-                    sugg_min = sugg_max = None
-            else:
-                sugg_min = sugg_max = None
-            c1, c2, c3 = st.columns([1,1,1])
-            with c1:
-                xmin = st.text_input(f"Track {i} • X min", value=(f"{sugg_min:.3f}" if sugg_min is not None else ""), key=f"xmin_{i}")
-            with c2:
-                xmax = st.text_input(f"Track {i} • X max", value=(f"{sugg_max:.3f}" if sugg_max is not None else ""), key=f"xmax_{i}")
-            with c3:
-                st.write("\u00A0")
-                st.write("Auto si vide")
-            try:
-                xr = (float(xmin), float(xmax)) if xmin.strip() != "" and xmax.strip() != "" else None
-            except Exception:
-                xr = None
-            x_ranges.append(xr)
 if not chosen:
     st.info("Sélectionnez au moins un log dans les tracks ci-dessus.")
 else:
@@ -122,15 +80,18 @@ else:
         units=units,
         title=f"Tracks — {display_name}",
         color_map=color_map if color_map else None,
-        x_ranges=x_ranges,
         track_width=int(track_width),
         height=int(fig_height),
         trim_depth_gaps=trim_depth,
     )
     non_empty_tracks = [tg for tg in track_groups if tg]
     single = len(non_empty_tracks) == 1
+    # Toujours respecter la largeur calculée (track_width * n). Quand plusieurs tracks,
+    # use_container_width=True écrasait width -> on le désactive.
     st.plotly_chart(
         fig_custom,
-        use_container_width=not single,
+        use_container_width=False,
         config={"displaylogo": False}
     )
+    if not single:
+        st.caption("Astuce: réduisez ou augmentez la largeur par track dans la sidebar pour ajuster l'espace horizontal.")

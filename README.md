@@ -25,11 +25,12 @@ Ensuite :
 - Importer des fichiers `.LAS`
 - Construire des tracks (plusieurs logs côte à côte)
 - Faire des crossplots (X vs Y, couleur optionnelle)
+- Explorer des statistiques (histogrammes, boxplots, pairplot, corrélation)
 
 ## Structure
 
 - `app.py` – point d'entrée Streamlit
-- `pages/` – pages multipages (import, visualisation, crossplots)
+- `pages/` – pages multipages (import, visualisation, crossplots, statistiques)
 - `src/las_utils.py` – lecture et normalisation des LAS
 - `src/plot_utils.py` – fonctions de tracé Plotly
 (- `.streamlit/config.toml` si présent – thème Streamlit)

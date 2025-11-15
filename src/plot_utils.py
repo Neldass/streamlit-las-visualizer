@@ -78,7 +78,15 @@ def plot_logs_custom_tracks(
             if normalize and log in norm_ranges:
                 label += " [norm]"
             fig.add_trace(
-                go.Scatter(x=series, y=depth, mode="lines", name=label, showlegend=True),
+                go.Scatter(
+                    x=series,
+                    y=depth,
+                    mode="lines",
+                    name=label,
+                    showlegend=True,
+                    line=dict(color=color, width=line_width),
+                    opacity=opacity,
+                ),
                 row=1,
                 col=col_idx,
             )
@@ -139,22 +147,32 @@ def plot_logs_custom_tracks(
         )
 
     for i in range(1, n + 1):
-        yaxis_kwargs = dict(
-            title_text=depth_col if i == 1 else None,
-            showticklabels=True if i == 1 else False,
-            showgrid=True,
-            gridcolor="rgba(180,180,180,0.35)",
-            gridwidth=0.7,
-            zeroline=False,
-            row=1,
-            col=i,
-        )
         if i in trimmed_ranges:
-            yaxis_kwargs['range'] = list(trimmed_ranges[i])
-            yaxis_kwargs['autorange'] = False
+            rng = list(trimmed_ranges[i])
+            fig.update_yaxes(
+                range=rng,
+                autorange=False,
+                title_text=depth_col if i == 1 else None,
+                showticklabels=True if i == 1 else False,
+                showgrid=True,
+                gridcolor="rgba(180,180,180,0.35)",
+                gridwidth=0.7,
+                zeroline=False,
+                row=1,
+                col=i,
+            )
         else:
-            yaxis_kwargs['autorange'] = "reversed"
-        fig.update_yaxes(**yaxis_kwargs)
+            fig.update_yaxes(
+                autorange="reversed",
+                title_text=depth_col if i == 1 else None,
+                showticklabels=True if i == 1 else False,
+                showgrid=True,
+                gridcolor="rgba(180,180,180,0.35)",
+                gridwidth=0.7,
+                zeroline=False,
+                row=1,
+                col=i,
+            )
         fig.update_xaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)", gridwidth=0.6, zeroline=False, row=1, col=i)
 
     fig.update_layout(
@@ -164,4 +182,5 @@ def plot_logs_custom_tracks(
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=40, r=20, t=60, b=40),
     )
+    # Annotation retirée pour éviter double affichage du nom dans cas single-track.
     return fig
