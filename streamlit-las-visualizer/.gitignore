@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.eggs/
+.build/
+.dist/
+
+# Virtual envs
+.venv/
+.env/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+
+# Streamlit
+.streamlit/cache/
+.streamlit/secrets.toml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+*.las
+
+# Coverage / test
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Misc
+*.bak
+*.tmp
