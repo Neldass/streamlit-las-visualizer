@@ -7,18 +7,26 @@ from src.las_utils import list_numeric_logs, subset_depth
 
 
 def build_color_map(selected: list[str], custom_enabled: bool) -> dict[str, str]:
+    """Return a color map keyed by the WELL label used in charts.
+
+    The label is LAS well name when available, otherwise display name/filename.
+    """
     base_cycle = px.colors.qualitative.Plotly
-    color_map: dict[str, str] = {w: base_cycle[i % len(base_cycle)] for i, w in enumerate(selected)}
+    def label_for(key: str) -> str:
+        ds = st.session_state.get("datasets", {}).get(key, {})
+        return ds.get("well_name") or ds.get("display_name", key)
+
+    labels = [label_for(w) for w in selected]
+    color_map: dict[str, str] = {lbl: base_cycle[i % len(base_cycle)] for i, lbl in enumerate(labels)}
     if custom_enabled:
         st.sidebar.markdown("— Couleurs par puits —")
         if "stats_colors" not in st.session_state:
             st.session_state["stats_colors"] = {}
-        for w in selected:
-            default_hex = st.session_state["stats_colors"].get(w, color_map[w])
-            label = st.session_state["datasets"][w].get("display_name", w) if "datasets" in st.session_state else w
-            picked = st.sidebar.color_picker(f"{label}", default_hex, key=f"stats_color_{w}")
-            st.session_state["stats_colors"][w] = picked
-            color_map[w] = picked
+        for key, lbl in zip(selected, labels):
+            default_hex = st.session_state["stats_colors"].get(lbl, color_map[lbl])
+            picked = st.sidebar.color_picker(f"{lbl}", default_hex, key=f"stats_color_{key}")
+            st.session_state["stats_colors"][lbl] = picked
+            color_map[lbl] = picked
     return color_map
 
 
@@ -92,7 +100,7 @@ def build_combined_df(cols: list[str]) -> pd.DataFrame:
         if not present:
             continue
         chunk = df[present].copy()
-        chunk["WELL"] = n
+        chunk["WELL"] = d.get("well_name") or d.get("display_name", n)
         frames.append(chunk)
     if frames:
         out = pd.concat(frames, ignore_index=True)

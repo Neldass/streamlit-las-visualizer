@@ -56,6 +56,8 @@ def plot_logs_custom_tracks(
     color_cycle = px.colors.qualitative.D3
     trimmed_ranges: Dict[int, Tuple[float, float]] = {}
 
+    seen_legend: set[str] = set()
+
     for col_idx, logs in enumerate(groups, start=1):
         norm_ranges: Dict[str, Tuple[float, float]] = {}
         if normalize:
@@ -85,13 +87,15 @@ def plot_logs_custom_tracks(
                     y=depth,
                     mode="lines",
                     name=label,
-                    showlegend=True,
+                    legendgroup=label,
+                    showlegend=(label not in seen_legend),
                     line=dict(color=color, width=line_width),
                     opacity=opacity,
                 ),
                 row=1,
                 col=col_idx,
             )
+            seen_legend.add(label)
 
         track_title = ", ".join([l for l in logs if l in df.columns])
         if normalize and track_title:
@@ -236,6 +240,8 @@ def plot_logs_multi_wells(
     # For separators between wells
     well_col_offsets: Dict[int, int] = {wi: wi * n_tracks for wi in range(n_wells)}
 
+    # Show a single legend entry per well (even if multiple logs)
+    seen_wells: set[str] = set()
     for wi, w in enumerate(wells):
         df = df_by_well[w]
         depth = df[depth_col]
@@ -264,22 +270,26 @@ def plot_logs_multi_wells(
                     series = (pd.to_numeric(series, errors="coerce") - vmin) / (vmax - vmin)
                 color = (color_map.get(log) if (color_map and log in color_map) else color_cycle[(ti * 5 + i) % len(color_cycle)])
                 unit = units.get(log)
-                label = f"{w} — {log}{f' ({unit})' if unit else ''}"
+                # Legend label groups by well only to avoid duplicates
+                well_label = str(w)
+                trace_name = well_label
                 if normalize and log in norm_ranges:
-                    label += " [norm]"
+                    trace_name += " [norm]"
                 fig.add_trace(
                     go.Scatter(
                         x=series,
                         y=depth,
                         mode="lines",
-                        name=label,
-                        showlegend=True,
+                        name=trace_name,
+                        legendgroup=well_label,
+                        showlegend=(well_label not in seen_wells),
                         line=dict(color=color, width=line_width),
                         opacity=opacity,
                     ),
                     row=1,
                     col=col_idx,
                 )
+                seen_wells.add(well_label)
 
             track_title = ", ".join([l for l in logs if l in df.columns])
             if normalize and track_title:

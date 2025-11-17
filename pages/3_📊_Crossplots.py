@@ -8,18 +8,29 @@ from src.plot_utils import plot_crossplot
 
 
 def build_well_color_map(wells: list[str], custom_enabled: bool) -> dict[str, str]:
+    """Return a color map keyed by the WELL label that appears in plots.
+
+    The label is the LAS well name when available, otherwise the display name,
+    and finally the filename as a fallback. This keeps legend labels consistent
+    with what users see in the charts.
+    """
     base_cycle = px.colors.qualitative.Plotly
-    color_map: dict[str, str] = {w: base_cycle[i % len(base_cycle)] for i, w in enumerate(wells)}
+    # Build labels for each dataset key
+    def label_for(key: str) -> str:
+        ds = st.session_state.get("datasets", {}).get(key, {})
+        return ds.get("well_name") or ds.get("display_name", key)
+
+    labels = [label_for(w) for w in wells]
+    color_map: dict[str, str] = {lbl: base_cycle[i % len(base_cycle)] for i, lbl in enumerate(labels)}
     if custom_enabled:
         st.sidebar.markdown("— Couleurs par puits —")
         if "cross_colors" not in st.session_state:
             st.session_state["cross_colors"] = {}
-        for w in wells:
-            label = st.session_state["datasets"].get(w, {}).get("display_name", w) if "datasets" in st.session_state else w
-            default_hex = st.session_state["cross_colors"].get(w, color_map[w])
-            picked = st.sidebar.color_picker(label, default_hex, key=f"cross_color_{w}")
-            st.session_state["cross_colors"][w] = picked
-            color_map[w] = picked
+        for key, lbl in zip(wells, labels):
+            default_hex = st.session_state["cross_colors"].get(lbl, color_map[lbl])
+            picked = st.sidebar.color_picker(lbl, default_hex, key=f"cross_color_{key}")
+            st.session_state["cross_colors"][lbl] = picked
+            color_map[lbl] = picked
     return color_map
 
 st.set_page_config(page_title="Crossplots", page_icon="📊", layout="wide")
@@ -94,7 +105,8 @@ for n, d in datasets.items():
     tmp = subset_depth(d["df"].copy(), m, M)
     cols = [c for c in needed_cols if c in tmp.columns]
     chunk = tmp[cols].copy()
-    chunk["WELL"] = n
+    # Use well name when available, otherwise display name, then filename
+    chunk["WELL"] = d.get("well_name") or d.get("display_name", n)
     frames.append(chunk)
 
 combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=[x, y])

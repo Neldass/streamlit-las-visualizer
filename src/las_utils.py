@@ -61,6 +61,14 @@ def read_las_file(file_bytes: bytes, filename: str) -> dict:
     df = df.rename(columns={c: c.strip() if isinstance(c, str) else c for c in df.columns})
     df["DEPTH"] = pd.to_numeric(df["DEPTH"], errors="coerce")
 
+    # Preprocessing: coerce numeric logs and remove rows with only no-values
+    # (common case: all curves become no-value below a certain depth).
+    numeric_cols = [c for c in df.columns if c != "DEPTH"]
+    for c in numeric_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    if numeric_cols:
+        df = df.dropna(subset=numeric_cols, how="all").reset_index(drop=True)
+
     curves_info: List[LasCurveInfo] = []
     for c in las.curves:
         name = getattr(c, "mnemonic", str(c)).strip()

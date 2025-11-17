@@ -16,10 +16,16 @@ uv sync
 
 ## Lancer l'application
 
-```bash
-# Démarre Streamlit avec l'environnement configuré par uv
+```powershell
+# Méthode recommandée (fiable sous Windows)
+.\.venv\Scripts\python.exe -m streamlit run app.py
+
+# Alternative (si uv fonctionne dans votre environnement)
 uv run streamlit run app.py
 ```
+
+Astuce: Si `uv run streamlit run app.py` affiche "Failed to canonicalize script path",
+utilisez la commande Python ci‑dessus qui lance Streamlit comme module.
 
 Ensuite :
 - Importer des fichiers `.LAS`
