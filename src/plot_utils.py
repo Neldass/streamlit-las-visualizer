@@ -240,8 +240,8 @@ def plot_logs_multi_wells(
     # For separators between wells
     well_col_offsets: Dict[int, int] = {wi: wi * n_tracks for wi in range(n_wells)}
 
-    # Show a single legend entry per well (even if multiple logs)
-    seen_wells: set[str] = set()
+    # Show a single legend entry per log across all wells
+    seen_logs: set[str] = set()
     for wi, w in enumerate(wells):
         df = df_by_well[w]
         depth = df[depth_col]
@@ -270,26 +270,24 @@ def plot_logs_multi_wells(
                     series = (pd.to_numeric(series, errors="coerce") - vmin) / (vmax - vmin)
                 color = (color_map.get(log) if (color_map and log in color_map) else color_cycle[(ti * 5 + i) % len(color_cycle)])
                 unit = units.get(log)
-                # Legend label groups by well only to avoid duplicates
-                well_label = str(w)
-                trace_name = well_label
-                if normalize and log in norm_ranges:
-                    trace_name += " [norm]"
+                # Legend label groups by LOG to avoid duplicates across wells
+                base_label = f"{log}{f' ({unit})' if unit else ''}"
+                trace_name = base_label + (" [norm]" if normalize else "")
                 fig.add_trace(
                     go.Scatter(
                         x=series,
                         y=depth,
                         mode="lines",
                         name=trace_name,
-                        legendgroup=well_label,
-                        showlegend=(well_label not in seen_wells),
+                        legendgroup=base_label,
+                        showlegend=(base_label not in seen_logs),
                         line=dict(color=color, width=line_width),
                         opacity=opacity,
                     ),
                     row=1,
                     col=col_idx,
                 )
-                seen_wells.add(well_label)
+                seen_logs.add(base_label)
 
             track_title = ", ".join([l for l in logs if l in df.columns])
             if normalize and track_title:
